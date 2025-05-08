@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd  
 from pathlib import Path
 
+from numpy.lib._stride_tricks_impl import sliding_window_view
+
 
 def load_data(data_path: Path) -> pd.DataFrame:
     """
@@ -16,7 +18,14 @@ def load_data(data_path: Path) -> pd.DataFrame:
         FileNotFoundError: If the specified data file does not exist.
         ValueError: If the data is empty after removing unlabeled data and dropping NaN values.
     """
-    pass
+    data_path = Path(data_path)
+    if not data_path.exists():
+        raise FileNotFoundError(f"Data file {data_path} does not exist.")
+    df = pd.read_csv(data_path)
+    df = remove_unlabeled_data(df)
+    df = df.dropna()
+    return df
+
 
 def remove_unlabeled_data(data: pd.DataFrame) -> pd.DataFrame:
     """
@@ -28,7 +37,7 @@ def remove_unlabeled_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame with unlabeled data removed.
     """
-    pass
+    return data[data["labels"]!=-1]
 
 
 def convert_to_np(data: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -44,7 +53,23 @@ def convert_to_np(data: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarra
             - exp_ids (np.ndarray): Array of experiment IDs
             - data (np.ndarray): Combined array of current and voltage features
     """
-    pass
+    # Label und experiment IDs in NumPy-Array abtrennen
+    labels = data["labels"].to_numpy()
+    exp_ids = data["exp_ids"].to_numpy()
+
+    # Current und Volatge per sorted (korrekte Reihenfolge) filtern und sortieren
+    current_cols = sorted(col for col in data.columns if col.startswith("I"))
+    voltage_cols = sorted(col for col in data.columns if col.startswith("V"))
+
+    # gefilterte und sortierte current und voltage colums in NumPy-Array umwandeln
+    current = data[current_cols].to_numpy()
+    voltage = data[voltage_cols].to_numpy()
+
+    # current und voltage zu 3D-Array stapeln
+    data = np.stack((current, voltage), axis=-1)
+
+
+    return labels, exp_ids, data
 
 
 def create_sliding_windows_first_dim(data: np.ndarray, sequence_length: int) -> np.ndarray:
@@ -58,7 +83,18 @@ def create_sliding_windows_first_dim(data: np.ndarray, sequence_length: int) -> 
     Returns:
         np.ndarray: Windowed data of shape (n_windows, sequence_length*timesteps, features)
     """
-    pass
+    data = data
+    sequence_length = sequence_length
+    n_samples, timesteps, features = data.shape
+    if sequence_length > n_samples:
+        raise ValueError(
+            f"sequence_length ({sequence_length}) must be smaller than n_samples ({n_samples})."
+        )
+    windows = sliding_window_view(data, window_shape=sequence_length, axis=0)
+    n_windows = windows.shape[0]
+    windows = windows.reshape((n_windows, sequence_length*timesteps, features))
+
+    return windows
 
 def get_welding_data(path: Path, n_samples: int | None = None, return_sequences: bool = False, sequence_length: int = 100) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
